@@ -5,7 +5,7 @@ from datetime import datetime
 # ── YOUR CONFIG ──────────────────────────────────────────
 TELEGRAM_TOKEN = "8656898499:AAGcRU-wilwH4uewA4Uru1mTecKWYpGKG0s"
 CHAT_ID        = "716797698"
-TWELVEDATA_KEY = "your_free_api_key_here"   # from twelvedata.com
+TWELVEDATA_KEY = "3af6bad1a7be4b98a88e015a55e81775"   # from twelvedata.com
 RSI_PERIOD     = 14
 OVERSOLD       = 30
 OVERBOUGHT     = 70
