@@ -1,65 +1,45 @@
-# RSI Alert Bot v3 — yfinance edition
-# Real-time data, 5-min checks, duplicate protection, no API key needed
-
+# RSI Alert Bot v5 — Live Intrabar Alerts, 1-min checks
 import yfinance as yf
-import time
-import json
-import os
-import requests
+import time, json, os, requests
 from datetime import datetime, timezone
 
-# ── YOUR CONFIG ──────────────────────────────────────────
 TELEGRAM_TOKEN = "8656898499:AAGcRU-wilwH4uewA4Uru1mTecKWYpGKG0s"
 CHAT_ID        = "716797698"
 RSI_PERIOD     = 14
-OVERSOLD       = 30
-OVERBOUGHT     = 70
-CHECK_EVERY    = 60 * 5    # check every 5 minutes
-STATE_FILE     = "bot_state.json"   # saves state so restarts don't cause duplicates
-# ─────────────────────────────────────────────────────────
+CHECK_EVERY    = 60          # ← 1 minute checks
+STATE_FILE     = "bot_state.json"
+
+WATCHLIST = [
+    # ✅ XAUUSD=X = spot gold, matches TradingView exactly
+    {"symbol": "XAUUSD=X",  "name": "XAUUSD",  "tf": "15m", "oversold": 30, "overbought": 70},
+]
 
 def send_telegram(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
-        r = requests.post(url, json={
-            "chat_id":    CHAT_ID,
-            "text":       message,
-            "parse_mode": "HTML"
+        requests.post(url, json={
+            "chat_id": CHAT_ID, "text": message, "parse_mode": "HTML"
         }, timeout=10)
-        if r.status_code == 200:
-            print(f"Telegram sent OK")
-        else:
-            print(f"Telegram error: {r.status_code} {r.text}")
     except Exception as e:
-        print(f"Telegram failed: {e}")
+        print(f"Telegram error: {e}")
 
-def get_prices():
-    """
-    Fetch XAUUSD 15-min candles from Yahoo Finance.
-    Free, no API key, near real-time (under 1 min delay).
-    Uses XAUUSD=X which is spot gold price.
-    """
+def get_prices(yf_symbol):
     try:
-        ticker = yf.Ticker("XAUUSD=X")   # Gold futures — most liquid, closest to spot
+        ticker = yf.Ticker(yf_symbol)
         df = ticker.history(period="5d", interval="15m")
         if df is None or df.empty:
-            print("yfinance returned empty data, trying XAUUSD=X...")
-            ticker = yf.Ticker("XAUUSD=X")
-            df = ticker.history(period="5d", interval="15m")
-        if df is None or df.empty:
             return None, None
-        # Use only fully closed candles — drop the current live candle
-        df = df.iloc[:-1]
+        # ✅ KEY CHANGE — include the LIVE candle (no df.iloc[:-1])
+        # This means RSI fires as soon as price crosses 30/70 intrabar
         closes = list(df["Close"])
         price  = round(closes[-1], 2)
-        print(f"Fetched {len(closes)} candles. Latest close: ${price}")
         return closes, price
     except Exception as e:
-        print(f"Price fetch error: {e}")
+        print(f"Fetch error {yf_symbol}: {e}")
         return None, None
 
 def calculate_rsi(prices, period=14):
-    """Wilder's Smoothed RSI — identical to TradingView"""
+    """Wilder's RSI — matches TradingView"""
     if len(prices) < period + 2:
         return None
     deltas = [prices[i] - prices[i-1] for i in range(1, len(prices))]
@@ -75,110 +55,96 @@ def calculate_rsi(prices, period=14):
     rs = avg_gain / avg_loss
     return round(100 - (100 / (1 + rs)), 2)
 
-def format_message(signal, rsi, price, note):
+def format_message(name, signal, rsi, price, tf, note):
     emoji = "🟢" if "OVERSOLD" in signal else "🔴"
     t = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     return (
-        f"{emoji} <b>XAUUSD — {signal}</b>\n\n"
+        f"{emoji} <b>{name} — {signal}</b>\n\n"
         f"RSI: <b>{rsi}</b>\n"
         f"Price: <b>${price}</b>\n"
-        f"Timeframe: <b>15m</b>\n"
+        f"Timeframe: <b>{tf}</b>\n"
         f"Time: {t}\n\n"
         f"<i>{note}</i>\n"
         f"<i>Not financial advice.</i>"
     )
 
-def save_state(signal):
-    """Save last signal to file so bot survives Railway restarts"""
+def save_state(state):
     try:
         with open(STATE_FILE, "w") as f:
-            json.dump({"last_signal": signal}, f)
-    except Exception as e:
-        print(f"State save error: {e}")
+            json.dump(state, f)
+    except: pass
 
 def load_state():
-    """Load last signal from file on startup"""
     try:
         if os.path.exists(STATE_FILE):
             with open(STATE_FILE, "r") as f:
-                data = json.load(f)
-                sig = data.get("last_signal")
-                print(f"Loaded saved state: last_signal = {sig}")
-                return sig
-    except Exception as e:
-        print(f"State load error: {e}")
-    return None
+                return json.load(f)
+    except: pass
+    return {}
 
-# ── STARTUP ───────────────────────────────────────────────
-print("=" * 50)
-print("RSI Bot v3 — yfinance real-time, 5-min checks")
-print("=" * 50)
-
-last_signal = load_state()
-print(f"Starting with last_signal = {last_signal}")
-
+# ── STARTUP ──────────────────────────────────────────────
+print("RSI Bot v5 — Live intrabar alerts, 1-min checks")
+state = load_state()
+asset_list = "\n".join([f"• {a['name']}" for a in WATCHLIST])
 send_telegram(
-    "🤖 <b>RSI Bot v3 is LIVE</b>\n\n"
-    "✅ Real-time data via yfinance\n"
-    "✅ Checks every 5 minutes\n"
-    "✅ Duplicate protection enabled\n"
-    "✅ Wilder's RSI matches TradingView\n\n"
-    "Watching XAUUSD 15m for RSI signals..."
+    f"🤖 <b>RSI Bot v5 LIVE</b>\n\n"
+    f"<b>Monitoring:</b>\n{asset_list}\n\n"
+    f"✅ Spot prices (XAUUSD=X matches TradingView)\n"
+    f"✅ Live intrabar RSI — no candle close wait\n"
+    f"✅ Checks every 60 seconds\n"
+    f"✅ Wilder's RSI"
 )
 
 # ── MAIN LOOP ─────────────────────────────────────────────
 while True:
-    try:
-        prices, price = get_prices()
+    t_now = datetime.now(timezone.utc).strftime("%H:%M")
+    print(f"\n[{t_now}] Scanning {len(WATCHLIST)} assets...")
 
-        if prices and price:
+    for asset in WATCHLIST:
+        name, symbol = asset["name"], asset["symbol"]
+        tf, os_lvl, ob_lvl = asset["tf"], asset["oversold"], asset["overbought"]
+        try:
+            prices, price = get_prices(symbol)
+            if not prices or price is None:
+                print(f"  {name}: no data")
+                continue
+
             rsi = calculate_rsi(prices, RSI_PERIOD)
-            t   = datetime.now(timezone.utc).strftime("%H:%M")
-            print(f"[{t} UTC] RSI = {rsi}  |  Price = ${price}  |  State = {last_signal}")
+            if rsi is None:
+                print(f"  {name}: RSI not ready")
+                continue
 
-            if rsi is not None:
+            last_signal = state.get(name)
+            print(f"  {name}: RSI={rsi} | Price=${price} | State={last_signal}")
 
-                # RSI crosses BELOW 30 — oversold entry
-                if rsi < OVERSOLD and last_signal != "OVERSOLD":
-                    msg = format_message(
-                        "OVERSOLD_ENTRY", rsi, price,
-                        f"RSI = {rsi} — below {OVERSOLD}. Potential buy zone on Gold!")
-                    send_telegram(msg)
-                    last_signal = "OVERSOLD"
-                    save_state(last_signal)
+            if rsi < os_lvl and last_signal != "OVERSOLD":
+                send_telegram(format_message(name, "OVERSOLD_ENTRY", rsi, price, tf,
+                    f"RSI = {rsi} — crossed below {os_lvl}. Potential buy zone!"))
+                state[name] = "OVERSOLD"
+                save_state(state)
 
-                # RSI recovers ABOVE 30 from oversold
-                elif rsi >= OVERSOLD and last_signal == "OVERSOLD":
-                    msg = format_message(
-                        "OVERSOLD_RECOVERY", rsi, price,
-                        f"RSI recovered to {rsi} — momentum returning")
-                    send_telegram(msg)
-                    last_signal = None
-                    save_state(last_signal)
+            elif rsi >= os_lvl and last_signal == "OVERSOLD":
+                send_telegram(format_message(name, "OVERSOLD_RECOVERY", rsi, price, tf,
+                    f"RSI recovered to {rsi} — momentum returning"))
+                state[name] = None
+                save_state(state)
 
-                # RSI crosses ABOVE 70 — overbought entry
-                elif rsi > OVERBOUGHT and last_signal != "OVERBOUGHT":
-                    msg = format_message(
-                        "OVERBOUGHT_ENTRY", rsi, price,
-                        f"RSI = {rsi} — above {OVERBOUGHT}. Potential sell zone on Gold!")
-                    send_telegram(msg)
-                    last_signal = "OVERBOUGHT"
-                    save_state(last_signal)
+            elif rsi > ob_lvl and last_signal != "OVERBOUGHT":
+                send_telegram(format_message(name, "OVERBOUGHT_ENTRY", rsi, price, tf,
+                    f"RSI = {rsi} — crossed above {ob_lvl}. Potential sell zone!"))
+                state[name] = "OVERBOUGHT"
+                save_state(state)
 
-                # RSI drops BELOW 70 from overbought
-                elif rsi <= OVERBOUGHT and last_signal == "OVERBOUGHT":
-                    msg = format_message(
-                        "OVERBOUGHT_RECOVERY", rsi, price,
-                        f"RSI dropped to {rsi} — sell pressure easing")
-                    send_telegram(msg)
-                    last_signal = None
-                    save_state(last_signal)
+            elif rsi <= ob_lvl and last_signal == "OVERBOUGHT":
+                send_telegram(format_message(name, "OVERBOUGHT_RECOVERY", rsi, price, tf,
+                    f"RSI dropped to {rsi} — sell pressure easing"))
+                state[name] = None
+                save_state(state)
 
-        else:
-            print("No price data received — will retry next cycle")
+            time.sleep(2)   # small pause between assets
 
-    except Exception as e:
-        print(f"Main loop error: {e}")
-        send_telegram(f"⚠️ Bot error: {e}")
+        except Exception as e:
+            print(f"  {name} error: {e}")
+            continue
 
     time.sleep(CHECK_EVERY)
