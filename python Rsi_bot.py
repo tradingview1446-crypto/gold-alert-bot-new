@@ -40,7 +40,7 @@ def get_prices():
     Uses XAUUSD=X which is spot gold price.
     """
     try:
-        ticker = yf.Ticker("GC=F")   # Gold futures — most liquid, closest to spot
+        ticker = yf.Ticker("XAUUSD=X")   # Gold futures — most liquid, closest to spot
         df = ticker.history(period="5d", interval="15m")
         if df is None or df.empty:
             print("yfinance returned empty data, trying XAUUSD=X...")
