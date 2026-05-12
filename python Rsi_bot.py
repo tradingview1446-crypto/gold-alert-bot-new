@@ -1,4 +1,4 @@
-# RSI Alert Bot v5 — Live Intrabar Alerts, 1-min checks
+# RSI Alert Bot v5 — Live Intrabar Alerts, 5-min checks
 import yfinance as yf
 import time, json, os, requests
 from datetime import datetime, timezone
@@ -106,7 +106,7 @@ send_telegram(
     f"<b>Monitoring:</b>\n{asset_list}\n\n"
     f"✅ Spot prices (XAUUSD=X matches TradingView)\n"
     f"✅ Live intrabar RSI — no candle close wait\n"
-    f"✅ Checks every 60 seconds\n"
+    f"✅ Checks every 5 minutes\n"
     f"✅ Wilder's RSI"
 )
 
