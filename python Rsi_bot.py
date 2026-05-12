@@ -6,12 +6,12 @@ from datetime import datetime, timezone
 TELEGRAM_TOKEN = "8656898499:AAGcRU-wilwH4uewA4Uru1mTecKWYpGKG0s"
 CHAT_ID        = "716797698"
 RSI_PERIOD     = 14
-CHECK_EVERY    = 60          # ← 1 minute checks
+CHECK_EVERY = 60 * 5          # ← 5 minute checks
 STATE_FILE     = "bot_state.json"
 
 WATCHLIST = [
     # ✅ XAUUSD=X = spot gold, matches TradingView exactly
-    {"symbol": "XAUUSD=X",  "name": "XAUUSD",  "tf": "15m", "oversold": 30, "overbought": 70},
+    {"symbol": "GC=F",      "name": "XAUUSD",  "tf": "15m", "oversold": 30, "overbought": 70},
 ]
 
 def send_telegram(message):
@@ -24,19 +24,34 @@ def send_telegram(message):
         print(f"Telegram error: {e}")
 
 def get_prices(yf_symbol):
-    try:
-        ticker = yf.Ticker(yf_symbol)
-        df = ticker.history(period="5d", interval="15m")
-        if df is None or df.empty:
-            return None, None
-        # ✅ KEY CHANGE — include the LIVE candle (no df.iloc[:-1])
-        # This means RSI fires as soon as price crosses 30/70 intrabar
-        closes = list(df["Close"])
-        price  = round(closes[-1], 2)
-        return closes, price
-    except Exception as e:
-        print(f"Fetch error {yf_symbol}: {e}")
-        return None, None
+    """
+    Fetch prices with automatic fallback symbols.
+    If primary symbol fails, tries backup symbols automatically.
+    """
+    # Fallback map — if primary fails, try these in order
+    fallbacks = {
+        "XAUUSD=X": ["GC=F", "XAU=X"],
+        "GC=F":     ["XAUUSD=X", "XAU=X"],
+    }
+
+    symbols_to_try = [yf_symbol] + fallbacks.get(yf_symbol, [])
+
+    for sym in symbols_to_try:
+        try:
+            ticker = yf.Ticker(sym)
+            df = ticker.history(period="5d", interval="15m")
+            if df is not None and not df.empty and len(df) > 20:
+                closes = list(df["Close"])
+                price  = round(closes[-1], 2)
+                if sym != yf_symbol:
+                    print(f"  Used fallback symbol {sym} instead of {yf_symbol}")
+                return closes, price
+        except Exception as e:
+            print(f"  Symbol {sym} failed: {e}, trying next...")
+            continue
+
+    print(f"  All symbols failed for {yf_symbol}")
+    return None, None
 
 def calculate_rsi(prices, period=14):
     """Wilder's RSI — matches TradingView"""
@@ -83,7 +98,7 @@ def load_state():
     return {}
 
 # ── STARTUP ──────────────────────────────────────────────
-print("RSI Bot v5 — Live intrabar alerts, 1-min checks")
+print("RSI Bot v5 — Live intrabar alerts, 5-min checks")
 state = load_state()
 asset_list = "\n".join([f"• {a['name']}" for a in WATCHLIST])
 send_telegram(
