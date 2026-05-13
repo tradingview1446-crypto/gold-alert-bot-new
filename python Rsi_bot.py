@@ -15,12 +15,11 @@ RSI_PERIOD     = 14
 CHECK_EVERY    = 60 * 5    # 2 minutes — sweet spot
 STATE_FILE     = "bot_state.json"
 
-# ── WATCHLIST ─────────────────────────────────────────────
-# OANDA instruments use underscore format: XAU_USD not XAUUSD
+# ── WATCHLIST — add or remove any asset ──────────────────
 WATCHLIST = [
-    # Commodities
-    {"symbol": "XAU_USD",  "name": "XAUUSD",  "tf": "15m", "oversold": 30, "overbought": 70},
+    {"symbol": "XAU_USD", "name": "XAUUSD", "tf": "15m", "oversold": 30, "overbought": 70},
 ]
+# ─────────────────────────────────────────────────────────
 
 def send_telegram(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
