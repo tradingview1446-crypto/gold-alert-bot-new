@@ -39,7 +39,7 @@ def get_prices(yf_symbol):
     for sym in symbols_to_try:
         try:
             ticker = yf.Ticker(sym)
-            df = ticker.history(period="5d", interval="15m")
+            df = ticker.history(period="60d", interval="15m")
             if df is not None and not df.empty and len(df) > 20:
                 closes = list(df["Close"])
                 price  = round(closes[-1], 2)
